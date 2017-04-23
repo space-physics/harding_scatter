@@ -2,20 +2,21 @@
 # Currently used by FPI_atmospheric_scatter_inversion.ipynb
 
 import numpy as np
-from numpy import sqrt, exp, arctan2, sin, cos, linspace, zeros, pi, arange, ravel_multi_index, meshgrid
-from numpy import arccos, arcsin, sum, reshape, mod, arctan, array, mean, concatenate
+from numpy import (sqrt, exp, arctan2, sin, cos, linspace, zeros, pi,
+                   arange, ravel_multi_index, meshgrid, arccos, arcsin,
+                    mod, array, concatenate)
 import sys
 import time as time_mod
-from IPython.display import display, clear_output
+from IPython.display import clear_output
 from scipy import interpolate
 import scipy.sparse as sp
-from scipy.sparse import linalg as splinalg
+from scipy.optimize import leastsq
 from numpy.linalg import norm
-from scipy.interpolate import RectBivariateSpline, RectSphereBivariateSpline
+from scipy.interpolate import RectSphereBivariateSpline
 import bisect
 
 RE = 6371e3
-sec = lambda(x): 1/cos(x)
+sec = lambda x: 1/cos(x)
 
 
 # Copied from MIGHTI_L2
@@ -25,46 +26,46 @@ def interpolate_linear(x, y, x0, extrapolation='hold', prop_err = False, yerr = 
     x and y are vectors comprising samples of this function. There is also
     an option to propagate errors to the interpolated value. This function is
     5 times faster than scipy.interpolate.interp1d, and allows for
-    zero-order-hold extrapolation. If you are interpolating to many points, 
-    then scipy.interpolate.interp1d is likely faster. 
+    zero-order-hold extrapolation. If you are interpolating to many points,
+    then scipy.interpolate.interp1d is likely faster.
 
     INPUTS:
-    
+
       *  x     -- TYPE:array(n), UNITS:arb. Independent variable of samples of function.
       *  y     -- TYPE:array(n), UNITS:arb. Dependent variable of samples of function.
       *  x0    -- TYPE:float,    UNITS:arb. Independent variable of interpolation point.
-      
+
     OPTIONAL INPUTS:
-    
+
       *  extrapolation -- TYPE:str,        'hold': extrapolate by using values at end points (default)
                                            'none': do not extrapolate. Points will be np.nan
       *  prop_err      -- TYPE:bool,
-      
+
                                       * True:  propagate errors from original to interpolated
                                                value, and return an extra output; yerr must
-                                               be specified as an input. 
+                                               be specified as an input.
                                       * False: do not propagate errors, and return only one
                                                output (default).
-                                               
+
       *  yerr          -- TYPE:array(n), UNITS:arb. Error in y, to be propagated to interpolated value.
-      
+
     OUTPUTS:
-    
+
       *  y0    -- TYPE:float,    UNITS:arb. Interpolated value.
-      
+
     OPTIONAL OUTPUT (if prop_err = True):
-    
+
       *  y0err -- TYPE:float,    UNTIS:arb. Propagated error of y0.
-      
+
     '''
-    
+
     if prop_err and yerr is None:
         raise Exception('If prop_err=True, then yerr must be specified')
-        
+
     # Special corner case: if x0 is x[-1], return y[-1]
     if x0==x[-1]:
         return y[-1]
-    
+
     j0 = bisect.bisect(x,x0) - 1 # index to the left
     j1 = j0 + 1 # index to the right
     y0err = np.nan
@@ -76,7 +77,7 @@ def interpolate_linear(x, y, x0, extrapolation='hold', prop_err = False, yerr = 
                 y0err = yerr[0]
         elif extrapolation == 'none':
             y0 = np.nan
-        else: 
+        else:
             raise Exception('"%s" not understood' % extrapolation)
     elif j1 == len(x):
         if extrapolation=='hold':
@@ -85,20 +86,20 @@ def interpolate_linear(x, y, x0, extrapolation='hold', prop_err = False, yerr = 
                 y0err = yerr[-1]
         elif extrapolation == 'none':
             y0 = np.nan
-        else: 
+        else:
             raise Exception('"%s" not understood' % extrapolation)
     else: # linear interpolation
         w1 = (x0-x[j0]) / (x[j1]-x[j0]) # weight of y[j1]
         w0 = 1.0-w1 # weight of y[j0]
         y0 = w0*y[j0] + w1*y[j1]
         if prop_err:
-            # What is the best way to interpolate errors? 
+            # What is the best way to interpolate errors?
             # Statistically correct way, but yields counterintuitive results, such as
             # a higher error near the sample points than between them:
             #y0err = np.sqrt(w0**2*yerr[j0]**2 + w1**2*yerr[j1]**2)
             # Simple way: just interpolate errors
             y0err = w0*yerr[j0] + w1*yerr[j1]
-            
+
     if prop_err:
         return y0, y0err
     else:
@@ -108,19 +109,19 @@ def interpolate_linear(x, y, x0, extrapolation='hold', prop_err = False, yerr = 
 def particle_velocity_density(v,u,T,I):
     '''
     A plot over v will show the velocity distribution of particles that are emitting
-    airglow. Integrating this distribution will give you I. The particles are from 
+    airglow. Integrating this distribution will give you I. The particles are from
     a gas with bulk LoS velocity u and temperature T.
-    
+
     Basically, this function is a forward model for the spectrum in velocity space.
     '''
 
-    c = 299792458.
+#    c = 299792458.
     k = 1.3806503e-23
     m = 16/6.0221367e26
 
     # https://en.wikipedia.org/wiki/Maxwell%E2%80%93Boltzmann_distribution
     g = I*sqrt(m/(2*pi*k*T))*exp(-m*(v-u)**2 / (2*k*T))
-    
+
     return g
 
 
@@ -141,27 +142,26 @@ def spectral_intensity(dhf,x,y,v,uvw,T,h):
     R = sqrt(RE**2 + (RE+h)**2 - 2*RE*(RE+h)*cos(rho/(RE+h)))
     th = arcsin((RE+h)/R * sin(rho/(RE+h)))
     ph = arctan2(x,y) # azimuth to points
-    gamma = arcsin(RE/(RE+h) * sin(th)) # zenith angle (slant angle) at pierce point    
+    gamma = arcsin(RE/(RE+h) * sin(th)) # zenith angle (slant angle) at pierce point
     loswind = uvw[0]*sin(gamma)*sin(ph) + uvw[1]*sin(gamma)*cos(ph) + uvw[2]*cos(gamma)
     #print loswind
-    
+
     return particle_velocity_density(v, loswind, T, dhf(x,y))
 
 
 
 def analyze_spectrum(v, spectrum):
     ''' Analyze a spectrum in velocity space, to get wind and temperature'''
-    
-    if any(np.isnan(spectrum)):
-        return np.nan, np.nan, np.nan
-    
+    spectrum = np.atleast_1d(spectrum)
+    if np.isnan(spectrum).any():
+        return (np.nan,)*3
+
     # Achieve this by fitting a Gaussian to the spectrum
     def my_func(p, v, spectrum):
         model = p[3] + particle_velocity_density(v,p[0],p[1],p[2])
         return model-spectrum
 
-    from scipy.optimize import leastsq
-    p0 = [0,1000,sum(spectrum)*(v[1]-v[0]),0.]
+    p0 = [0,1000,spectrum.sum()*(v[1]-v[0]),0.]
     p,flag = leastsq(my_func, p0, args=(v,spectrum))
     return p[0],p[1],p[2]
 
@@ -171,7 +171,7 @@ def white_light_scatter(dhf, tau0, P, h, om=1., M=20, N=20, R=20, N_int=30, R_in
                         tol=1e-4, K=20, verbose=True):
     '''
     This function calculates the scattered light distribution for a given source.
-    
+
     dhf: function that takes x,y and returns the column brightness
     tau0: optical thickness of atmosphere
     P: scattering phase function P(u0,u1,phi0,phi1)
@@ -185,14 +185,14 @@ def white_light_scatter(dhf, tau0, P, h, om=1., M=20, N=20, R=20, N_int=30, R_in
     tol: stop iterating when the relative change in the solution is less than this
     K: maximum iterations
     verbose: whether to print progress
-    
+
     Returns:
     I: (MxNxR) scattered light distribution
     tau_bounds: (M) the bounds of the cells in tau
     u_bounds:   (N+1) the bounds of the cells in u
     phi_bounds: (R+1) the bounds of the cells in phi
-    '''    
-    
+    '''
+
     # Define coordinates
     tau = linspace(0,tau0,M) # tau defined at grid walls
     tau_mid = (tau[1:] + tau[:-1])/2
@@ -239,7 +239,7 @@ def white_light_scatter(dhf, tau0, P, h, om=1., M=20, N=20, R=20, N_int=30, R_in
         if verbose:
             clear_output(wait=True)
             time_mod.sleep(0.01)
-            print 'Building A: %i/%i'%(m+1,M)
+            print('Building A: {}/{}'.format(m+1,M))
             sys.stdout.flush()
 
     A = sp.coo_matrix((Aval, [Arow, Acol]), shape=(M*N*R,(M-1)*N*R))
@@ -267,7 +267,7 @@ def white_light_scatter(dhf, tau0, P, h, om=1., M=20, N=20, R=20, N_int=30, R_in
         if verbose:
             clear_output(wait=True)
             time_mod.sleep(0.01)
-            print 'Building B: %i/%i'%(m+1,M-1)
+            print('Building B: %i/%i'%(m+1,M-1))
             sys.stdout.flush()
 
     B = sp.coo_matrix((Bval, [Brow, Bcol]), shape=((M-1)*N*R,M*N*R))
@@ -290,7 +290,7 @@ def white_light_scatter(dhf, tau0, P, h, om=1., M=20, N=20, R=20, N_int=30, R_in
     du_int = u_int_bounds[1:]-u_int_bounds[:-1]
     phi_int_bounds = linspace(0,2*pi,R_int+1)
     phi_int = (phi_int_bounds[1:] + phi_int_bounds[:-1])/2
-    dphi_int = phi_int_bounds[1:]-phi_int_bounds[:-1]    
+    dphi_int = phi_int_bounds[1:]-phi_int_bounds[:-1]
 
     for n in range(N):
         for r in range(R):
@@ -304,12 +304,12 @@ def white_light_scatter(dhf, tau0, P, h, om=1., M=20, N=20, R=20, N_int=30, R_in
             X = -RHO * cos(PHI)
             Y = -RHO * sin(PHI)
             dJ = om/(4*pi) * P(u[n], U, phi[r], PHI) * exp(-TAU/U) * dhf(X,Y) * sec(GAMMA) * DU*DPHI
-            J[:,n,r,0] = sum(dJ, axis=(1,2))
-            
+            J[:,n,r,0] = dJ.sum(axis=(1,2))
+
         if verbose:
             clear_output(wait=True)
             time_mod.sleep(0.01)
-            print 'Initial source function: %i/%i'%(n+1,N)
+            print('Initial source function: %i/%i'%(n+1,N))
             sys.stdout.flush()
 
     ######################################################################
@@ -320,27 +320,27 @@ def white_light_scatter(dhf, tau0, P, h, om=1., M=20, N=20, R=20, N_int=30, R_in
 
         # Compute I
         Iflat = A.dot(J[:,:,:,k].flatten())
-        I[:,:,:,k] = reshape(Iflat, (M,N,R))
+        I[:,:,:,k] = Iflat.reshape((M,N,R))
 
         # Compute J for next iteration
         Jflat = B.dot(I[:,:,:,k].flatten())
-        J[:,:,:,k+1] = reshape(Jflat,(M-1,N,R))
+        J[:,:,:,k+1] = Jflat.reshape((M-1,N,R))
 
         if verbose:
             clear_output(wait=True)
             time_mod.sleep(0.01)
-            print 'Scattering iteration: %i/%i'%(k+1,K)
+            print('Scattering iteration: %i/%i'%(k+1,K))
             sys.stdout.flush()
 
         # See how much solution is changing
-        change = norm(J[:,:,:,k+1])/norm(sum(J[:,:,:,:k+1],axis=3))
+        change = norm(J[:,:,:,k+1])/norm(J[:,:,:,:k+1].sum(axis=3))
         if change < tol:
             if verbose:
-                print 'Halted'
+                print('Halted')
             break
-            
-    Ifull = sum(I,axis=3) # All scattering orders
-    
+
+    Ifull = I.sum(axis=3) # All scattering orders
+
     return Ifull, tau, u_bounds, phi_bounds
 
 
@@ -351,7 +351,7 @@ def scatter_along_los(dhf, tau0, P, h, th_look, phi_look, om=1., q=None, full_fo
     '''
     For given lines of sight, calculate the direct and scattered brightness measurements, for both
     the in-FoV and out-of-FoV (i.e., stray light) components.
-    
+
     dhf: function that takes x,y and returns the column brightness
     tau0: optical thickness of atmosphere
     P: scattering phase function P(u0,u1,phi0,phi1)
@@ -370,7 +370,7 @@ def scatter_along_los(dhf, tau0, P, h, th_look, phi_look, om=1., q=None, full_fo
     tol: stop iterating when the relative change in the solution is less than this
     K: maximum iterations
     verbose: whether to print progress
-    
+
     Returns:
     g_sc:  (array) measured brightness from atmospheric scattering
     g_dir: (array) measured brightness from direct ray
@@ -382,17 +382,17 @@ def scatter_along_los(dhf, tau0, P, h, th_look, phi_look, om=1., q=None, full_fo
     Ifull, tau, u_bounds, phi_bounds = white_light_scatter(dhf, tau0, P, h, om=om, M=M, N=N, R=R, N_int=N_int, R_int=R_int,
                         tol=tol, K=K, verbose=verbose)
 
-    
+
     # Precalculate interpolation function
     ui = (u_bounds[1:] + u_bounds[:-1])/2
     phii = (phi_bounds[1:] + phi_bounds[:-1])/2
     thi = arccos(ui)[::-1]
-    
-    
+
+
     ######### VERSION USING RectSphereBivariateSpline ##############
-    
+
     Ii = Ifull[-1,::-1,:]
-    
+
     # There is a discontinuity at u=0 (th=pi/2), so interpolate over either
     # the top half or bottom half plane. In practice, we only need the bottom.
     # Another detail is that we should specify a point at zenith, otherwise
@@ -406,15 +406,15 @@ def scatter_along_los(dhf, tau0, P, h, th_look, phi_look, om=1., q=None, full_fo
     Ii_new[:,1:] = Ii
     Iint = RectSphereBivariateSpline(thi[:N/2], phii_new, Ii_new[:N/2,:], pole_values=(zenith_val, None))
     def I_sc(u,phi):
-        # Given a calculated, discretized, scattered intensity (Ifull), evaluate it 
+        # Given a calculated, discretized, scattered intensity (Ifull), evaluate it
         # at the given u, phi. Use linear interpolation on a sphere.
         # Global variables: Iint
         return Iint(arccos(u),phi).item()
     '''
     ######## VERSION USING BILIINEAR INTERPOLATION ############
-   
+
     Ii = Ifull[-1,:,:]
-    
+
     # Define ghost phi points at beginning and end to satisfy periodicity
     dp = phii[1]-phii[0]
     phii_new = concatenate(([phii[0]-dp],phii,[phii[-1]+dp]))
@@ -424,13 +424,13 @@ def scatter_along_los(dhf, tau0, P, h, th_look, phi_look, om=1., q=None, full_fo
     Ii_new[:,1:-1] = Ii
 
     def I_sc(u,phi):
-        # Given a calculated, discretized, scattered intensity (Ifull), evaluate it 
+        # Given a calculated, discretized, scattered intensity (Ifull), evaluate it
         # at the given u, phi. Use linear interpolation on a sphere.
-        
-        
+
+
         # Find u grid points which straddle the desired u
         n0 = bisect.bisect(ui,u)-1 # index to left
-        n1 = n0 + 1 
+        n1 = n0 + 1
 
         # Handle edge case at North pole
         if n0 >= 0: # Normal
@@ -446,15 +446,15 @@ def scatter_along_los(dhf, tau0, P, h, th_look, phi_look, om=1., q=None, full_fo
             I1 = interpolate_linear(phii_new, Ii_new[n1,:], phi, extrapolation='none')
         else: # Edge case: Use "ghost" data point
             un1 = 1.
-            I1 = np.mean(Ii[-1,:])    
+            I1 = np.mean(Ii[-1,:])
 
         # Then interpolate to the desired u
         I01 = interpolate_linear([un0,un1],[I0,I1],u, extrapolation='none')
-        
+
         return I01
     '''
-      
-    
+
+
     def I_dir(dhf,tau0,u,phi):
         '''
         Evaluate the direct intensity.
@@ -479,11 +479,11 @@ def scatter_along_los(dhf, tau0, P, h, th_look, phi_look, om=1., q=None, full_fo
         phi_dir = mod(pi/2 - phi_look[i]*pi/180 + pi, 2*pi)
         g_sc.append(I_sc(u_dir, phi_dir))
         g_dir.append(I_dir(dhf, tau0, u_dir, phi_dir))
-        
-        
+
+
     g_sc  = array(g_sc)
     g_dir = array(g_dir)
-        
+
     # Stray light calculation, if desired:
     s_sc = zeros(len(g_sc))
     s_dir = zeros(len(g_dir))
@@ -491,7 +491,7 @@ def scatter_along_los(dhf, tau0, P, h, th_look, phi_look, om=1., q=None, full_fo
         if full_fov_deg is None:
             raise Exception('If "q" is specified, "full_fov_deg" needs to be specified')
         dS = 2*pi*(1-cos(full_fov_deg/2 * pi/180)) # solid angle
-        
+
         th_bound_vec = linspace(pi/2, full_fov_deg/2*pi/180, Q_int+1) # don't include FoV
         u_bound_vec = cos(th_bound_vec)
         u_vec = (u_bound_vec[1:] + u_bound_vec[:-1])/2
@@ -500,8 +500,8 @@ def scatter_along_los(dhf, tau0, P, h, th_look, phi_look, om=1., q=None, full_fo
         phi_bound_vec = linspace(0,2*pi,Q_int+1)
         phi_vec = (phi_bound_vec[1:] + phi_bound_vec[:-1])/2
         dphi_vec = phi_bound_vec[1:] - phi_bound_vec[:-1]
-        
-        
+
+
         for looki in range(len(th_look)):
             # Collect integral term at each grid point
             d_gsc_stray = zeros((Q_int,Q_int))  # terms of integral at each grid point (see notes 2016-03-28)
@@ -522,9 +522,9 @@ def scatter_along_los(dhf, tau0, P, h, th_look, phi_look, om=1., q=None, full_fo
                     src  = [-sin(th)*cos(ph), -sin(th)*sin(ph), cos(th)]
                     angle_between = arccos(np.dot(look,src))
                     d_gsc_stray[i,j] = u_vec[i] * I_sc(u_vec[i],phi_vec[j]) * q(angle_between) * \
-                                       du_vec[i] * dphi_vec[j] 
+                                       du_vec[i] * dphi_vec[j]
                     d_gdir_stray[i,j] = u_vec[i] * I_dir(dhf,tau0, u_vec[i],phi_vec[j]) * q(angle_between) * \
-                                       du_vec[i] * dphi_vec[j]     
+                                       du_vec[i] * dphi_vec[j]
 
             # Add these stray components to the previously-calculated in-FoV component, of both
             # the direct and atmosphere-scattered signal.
@@ -534,23 +534,23 @@ def scatter_along_los(dhf, tau0, P, h, th_look, phi_look, om=1., q=None, full_fo
             # scaling the stray component by 1/dS. (For backwards compatibility).
             u_dir = cos(th_look[looki]*pi/180)
             phi_dir = mod(pi/2 - phi_look[looki]*pi/180 + pi, 360)
-            s_sc[looki]  = 1/dS * sum(d_gsc_stray)
-            s_dir[looki] = 1/dS * sum(d_gdir_stray)
-    
+            s_sc[looki]  = 1/dS * d_gsc_stray.sum()
+            s_dir[looki] = 1/dS * d_gdir_stray.sum()
+
     return g_sc, g_dir, s_sc, s_dir
 
 
 
 
 
-def descatter_asi_data(imcut, yim, tau0, P, h,  om=1., M=10, N=20, R=10, N_int=20, R_int=20, 
+def descatter_asi_data(imcut, yim, tau0, P, h,  om=1., M=10, N=20, R=10, N_int=20, R_int=20,
                        tol=1e-4, K=20, N_iters=5, verbose=True):
     '''
     Remove the effects of atmospheric extinction and scattering from the ASI data. This assumes data
-    are in the format given by Carlos (which already accounts for van Rhijn, aperture projection, 
+    are in the format given by Carlos (which already accounts for van Rhijn, aperture projection,
     flat field, solid angle, vignetting, stray light, etc.)
     '''
-        
+
     imcut_meas = imcut.copy()
     imcut_scatt = zeros(len(imcut))
     iter_change = zeros(N_iters)
@@ -558,11 +558,11 @@ def descatter_asi_data(imcut, yim, tau0, P, h,  om=1., M=10, N=20, R=10, N_int=2
     thim = abs(arctan2(yim,h)) # zenith angles for each imcut location (yim)
 
     for n_iter in range(N_iters):
-        
+
         if verbose:
             clear_output(wait=True)
             time_mod.sleep(0.01)
-            print '%i/%i' % (n_iter+1, N_iters)
+            print('%i/%i' % (n_iter+1, N_iters))
             sys.stdout.flush()
 
         # Define 2D brightness distribution function from current guess (sky - scatt)
@@ -581,13 +581,13 @@ def descatter_asi_data(imcut, yim, tau0, P, h,  om=1., M=10, N=20, R=10, N_int=2
             f[x**2 + y**2 > r_max**2] = 0.0 # Nothing beyond horizon
             return f
 
-        Ifull, tau, u_bounds, phi_bounds = white_light_scatter(dhf_iter, tau0, P, h, om=om, 
+        Ifull, tau, u_bounds, phi_bounds = white_light_scatter(dhf_iter, tau0, P, h, om=om,
                                     M=M, N=N, R=R, N_int=N_int, R_int=R_int, tol=tol, K=K, verbose=False)
-        
+
         # Using interpolation
         def I_sc(u,phi):
             '''
-            Given a calculated, discretized, scattered intensity (Ifull), evaluate it 
+            Given a calculated, discretized, scattered intensity (Ifull), evaluate it
             at the given u, phi. Use linear interpolation on a sphere.
             Global variables: Ifull, u_bounds, phi_bounds
             '''
@@ -609,7 +609,7 @@ def descatter_asi_data(imcut, yim, tau0, P, h,  om=1., M=10, N=20, R=10, N_int=2
             Iint = RectSphereBivariateSpline(thi[:N/2], phii_new, Ii_new[:N/2,:], pole_values=(zenith_val, None))
 
             return Iint(arccos(u),phi).item()
-        
+
 
         # Loop over cut and remove scattered component
         imcut_scatt_new = zeros(len(imcut_meas))
@@ -620,9 +620,9 @@ def descatter_asi_data(imcut, yim, tau0, P, h,  om=1., M=10, N=20, R=10, N_int=2
 
         iter_change[n_iter] = norm(imcut_scatt - imcut_scatt_new)/norm(imcut_scatt)
         imcut_scatt = imcut_scatt_new
-        
+
     # Create function for return
-    
+
     # Define 2D brightness distribution function from current guess (sky - scatt)
     imcut_descatter = exp(tau0/cos(thim)) * (imcut_meas - cos(thim)*imcut_scatt)
     dhf_interp_descatter = interpolate.interp1d(yim, imcut_descatter, bounds_error = False)
@@ -639,20 +639,20 @@ def descatter_asi_data(imcut, yim, tau0, P, h,  om=1., M=10, N=20, R=10, N_int=2
         f[y > yim[-1]] = imcut_descatter[-1] # Zero-order-hold extrapolation
         f[x**2 + y**2 > r_max**2] = 0.0 # Nothing beyond horizon
         return f
-    
+
     return dhf_descatter
 
 
 
 
-def descatter_asi_data_2D(imd, asi_mask_d, Xd, Yd, tau0, P, h, om=1., M=10, N=20, R=10, N_int=20, R_int=20, 
+def descatter_asi_data_2D(imd, asi_mask_d, Xd, Yd, tau0, P, h, om=1., M=10, N=20, R=10, N_int=20, R_int=20,
                        tol=1e-4, K=20, N_iters=5, verbose=True):
     '''
     Remove the effects of atmospheric extinction and scattering from the ASI data. This assumes data (imd)
     already has all instrumental effects removed: stray light, solid angle, flat field, vignetting, aperture projection,
     and also van Rhijn.
     '''
-        
+
     imd_meas = imd.copy()
     imd_scatt = zeros(np.shape(imd))
     iter_change = zeros(N_iters)
@@ -660,11 +660,11 @@ def descatter_asi_data_2D(imd, asi_mask_d, Xd, Yd, tau0, P, h, om=1., M=10, N=20
     thid = abs(arctan2(sqrt(Xd**2 + Yd**2),h)) # zenith angles for each imd location
 
     for n_iter in range(N_iters):
-        
+
         if verbose:
             clear_output(wait=True)
             time_mod.sleep(0.01)
-            print '%i/%i' % (n_iter+1, N_iters)
+            print('%i/%i' % (n_iter+1, N_iters))
             sys.stdout.flush()
 
         # Define 2D brightness distribution function from current guess (sky - scatt)
@@ -680,20 +680,20 @@ def descatter_asi_data_2D(imd, asi_mask_d, Xd, Yd, tau0, P, h, om=1., M=10, N=20
                                      method='nearest')
             # Special case if scalar inputs.
             if not hasattr(x,'__len__'): # don't worry about horizon or whatever. It's probably fine.
-                return f 
+                return f
 
             r_max = (RE+h) * arccos(RE/(RE+h))
             f[x**2 + y**2 > r_max**2] = 0.0 # nothing beyond horizon (likely doesn't matter)
             return f
-        
-        
+
+
         Ifull, tau, u_bounds, phi_bounds = white_light_scatter(dhf_iter, tau0, P, h, om=om,
                                     M=M, N=N, R=R, N_int=N_int, R_int=R_int, tol=tol, K=K, verbose=False)
-        
+
         # Using interpolation
         def I_sc(u,phi):
             '''
-            Given a calculated, discretized, scattered intensity (Ifull), evaluate it 
+            Given a calculated, discretized, scattered intensity (Ifull), evaluate it
             at the given u, phi. Use linear interpolation on a sphere.
             Global variables: Ifull, u_bounds, phi_bounds
             '''
@@ -715,7 +715,7 @@ def descatter_asi_data_2D(imd, asi_mask_d, Xd, Yd, tau0, P, h, om=1., M=10, N=20
             Iint = RectSphereBivariateSpline(thi[:N/2], phii_new, Ii_new[:N/2,:], pole_values=(zenith_val, None))
 
             return Iint(arccos(u),phi).item()
-        
+
 
         # Loop over cut and remove scattered component
         imd_scatt_new = zeros(np.shape(imd_meas))
@@ -727,9 +727,9 @@ def descatter_asi_data_2D(imd, asi_mask_d, Xd, Yd, tau0, P, h, om=1., M=10, N=20
 
         iter_change[n_iter] = norm(imd_scatt - imd_scatt_new)/norm(imd_scatt)
         imd_scatt = imd_scatt_new
-        
+
     # Create function for return
-    
+
     # Define 2D brightness distribution function from current guess (sky - scatt)
     imd_descatter = exp(tau0/cos(thid)) * (imd_meas - cos(thid)*imd_scatt)
 
@@ -743,18 +743,18 @@ def descatter_asi_data_2D(imd, asi_mask_d, Xd, Yd, tau0, P, h, om=1., M=10, N=20
                                  method='nearest')
         # Special case if scalar inputs.
         if not hasattr(x,'__len__'): # don't worry about horizon or whatever. It's probably fine.
-            return f 
+            return f
 
         r_max = (RE+h) * arccos(RE/(RE+h))
         f[x**2 + y**2 > r_max**2] = 0.0 # nothing beyond horizon (likely doesn't matter)
         return f
-    
+
     return dhf_descatter
 
 
 
 
-def scattered_and_direct_spectra(dhf, tau0, P, h, th_look, phi_look, uvw, T, om=1., q=None, full_fov_deg=None, M=20, N=20, 
+def scattered_and_direct_spectra(dhf, tau0, P, h, th_look, phi_look, uvw, T, om=1., q=None, full_fov_deg=None, M=20, N=20,
                                  R=20, N_int=30, R_int=30, Q_int=30, tol=1e-4, K=20, L=20, verbose=True):
 
     Nlook = len(th_look)
@@ -782,7 +782,7 @@ def scattered_and_direct_spectra(dhf, tau0, P, h, th_look, phi_look, uvw, T, om=
         if verbose:
             clear_output(wait=True)
             time_mod.sleep(0.01)
-            print '%i/%i'%(l+1,L)
+            print('{}/{}'.format(l+1,L))
             sys.stdout.flush()
 
     return v, spectrum_scatt, spectrum_direct, spectrum_scatt_stray, spectrum_direct_stray
