@@ -283,12 +283,12 @@ def white_light_scatter(dhf, tau0, P, h, om=1., M=20, N=20, R=20, N_int=30, R_in
 
     # Requires an integration over the airglow VER.
     # See notes page 28 for equation describing integration over sky.
-    th_int_bounds = linspace(pi/2,0.0,N_int+1)
+    th_int_bounds = linspace(pi/2, 0., N_int+1)
     u_int_bounds = cos(th_int_bounds)
     #u_int_bounds = linspace(0,1,N_int+1)
     u_int = (u_int_bounds[1:] + u_int_bounds[:-1])/2
-    du_int = u_int_bounds[1:]-u_int_bounds[:-1]
-    phi_int_bounds = linspace(0,2*pi,R_int+1)
+    du_int = u_int_bounds[1:] - u_int_bounds[:-1]
+    phi_int_bounds = linspace(0, 2*pi, R_int+1)
     phi_int = (phi_int_bounds[1:] + phi_int_bounds[:-1])/2
     dphi_int = phi_int_bounds[1:]-phi_int_bounds[:-1]
 
@@ -319,11 +319,11 @@ def white_light_scatter(dhf, tau0, P, h, om=1., M=20, N=20, R=20, N_int=30, R_in
     for k in range(K):
 
         # Compute I
-        Iflat = A.dot(J[:,:,:,k].flatten())
+        Iflat = A @ J[:,:,:,k].ravel()
         I[:,:,:,k] = Iflat.reshape((M,N,R))
 
         # Compute J for next iteration
-        Jflat = B.dot(I[:,:,:,k].flatten())
+        Jflat = B @ I[:,:,:,k].ravel()
         J[:,:,:,k+1] = Jflat.reshape((M-1,N,R))
 
         if verbose:
@@ -346,7 +346,8 @@ def white_light_scatter(dhf, tau0, P, h, om=1., M=20, N=20, R=20, N_int=30, R_in
 
 
 
-def scatter_along_los(dhf, tau0, P, h, th_look, phi_look, om=1., q=None, full_fov_deg=None, M=20, N=20, R=20, N_int=30, R_int=30, Q_int=30,
+def scatter_along_los(dhf, tau0, P, h, th_look, phi_look, om=1., q=None, full_fov_deg=None,
+                      M=20, N=20, R=20, N_int=30, R_int=30, Q_int=30,
                         tol=1e-4, K=20, verbose=True):
     '''
     For given lines of sight, calculate the direct and scattered brightness measurements, for both
