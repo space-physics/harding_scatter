@@ -215,7 +215,7 @@ def white_light_scatter(dhf, tau0, P, h, om=1., M=20, N=20, R=20, N_int=30, R_in
     for m in range(M):
         for r in range(R):
             #%% u > 0
-            for n in range(N/2, N):
+            for n in range(N//2, N):
                 mp = arange(m)
                 row_index = ravel_multi_index((m,n,r),shap)
                 col_indexes = ravel_multi_index((mp,n,r),shap)
@@ -224,7 +224,7 @@ def white_light_scatter(dhf, tau0, P, h, om=1., M=20, N=20, R=20, N_int=30, R_in
                 Acol.extend(col_indexes)
                 Aval.extend(vals)
             #%% u < 0
-            for n in range(N/2):
+            for n in range(N//2):
                 mp = arange(m, M-1)
                 row_index = ravel_multi_index((m,n,r),shap)
                 col_indexes = ravel_multi_index((mp,n,r),shap)
