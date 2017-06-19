@@ -20,7 +20,7 @@ sec = lambda x: 1/cos(x)
 
 
 # Copied from MIGHTI_L2
-def interpolate_linear(x, y, x0, extrapolation='hold', prop_err = False, yerr = None):
+def interpolate_linear(x, y, x0:float, extrapolation:str='hold', prop_err:bool = False, yerr = None):
     '''
     Linear interpolation of the function y = f(x) to the location x0.
     x and y are vectors comprising samples of this function. There is also
@@ -60,7 +60,9 @@ def interpolate_linear(x, y, x0, extrapolation='hold', prop_err = False, yerr = 
     '''
 
     if prop_err and yerr is None:
-        raise Exception('If prop_err=True, then yerr must be specified')
+        raise ValueError('If prop_err=True, then yerr must be specified')
+
+    assert x.ndim == y.ndim == 1,'x and y must be vectors'
 
     # Special corner case: if x0 is x[-1], return y[-1]
     if x0==x[-1]:
@@ -78,8 +80,8 @@ def interpolate_linear(x, y, x0, extrapolation='hold', prop_err = False, yerr = 
         elif extrapolation == 'none':
             y0 = np.nan
         else:
-            raise Exception('"%s" not understood' % extrapolation)
-    elif j1 == len(x):
+            raise ValueError('{} not understood'.format(extrapolation))
+    elif j1 == x.size:
         if extrapolation=='hold':
             y0 = y[-1]
             if prop_err:
@@ -87,7 +89,7 @@ def interpolate_linear(x, y, x0, extrapolation='hold', prop_err = False, yerr = 
         elif extrapolation == 'none':
             y0 = np.nan
         else:
-            raise Exception('"%s" not understood' % extrapolation)
+            raise ValueError('{} not understood'.format(extrapolation))
     else: # linear interpolation
         w1 = (x0-x[j0]) / (x[j1]-x[j0]) # weight of y[j1]
         w0 = 1.0-w1 # weight of y[j0]
@@ -125,8 +127,6 @@ def particle_velocity_density(v,u,T,I):
     return g
 
 
-
-
 def spectral_intensity(dhf,x,y,v,uvw,T,h):
     '''
     The column brightness in a narrow wavelength (or equivalently, velocity) band.
@@ -149,14 +149,13 @@ def spectral_intensity(dhf,x,y,v,uvw,T,h):
     return particle_velocity_density(v, loswind, T, dhf(x,y))
 
 
-
 def analyze_spectrum(v, spectrum):
     ''' Analyze a spectrum in velocity space, to get wind and temperature'''
     spectrum = np.atleast_1d(spectrum)
     if np.isnan(spectrum).any():
         return (np.nan,)*3
 
-    # Achieve this by fitting a Gaussian to the spectrum
+#%% Achieve this by fitting a Gaussian to the spectrum
     def my_func(p, v, spectrum):
         model = p[3] + particle_velocity_density(v,p[0],p[1],p[2])
         return model-spectrum
@@ -164,7 +163,6 @@ def analyze_spectrum(v, spectrum):
     p0 = [0,1000,spectrum.sum()*(v[1]-v[0]),0.]
     p,flag = leastsq(my_func, p0, args=(v,spectrum))
     return p[0],p[1],p[2]
-
 
 
 def white_light_scatter(dhf, tau0, P, h, om=1., M=20, N=20, R=20, N_int=30, R_int=30,
@@ -207,28 +205,27 @@ def white_light_scatter(dhf, tau0, P, h, om=1., M=20, N=20, R=20, N_int=30, R_in
     phi = (phi_bounds[1:] + phi_bounds[:-1])/2
     dphi = phi[1] - phi[0]
 
-    ##################################################################
-    # Compute matrices which will implement scattering calculations
+#%% Compute matrices which will implement scattering calculations
 
-    #### A: From J to I
+    # A: From J to I
     Arow = []
     Acol = []
     Aval = []
     shap = (M,N,R)
     for m in range(M):
         for r in range(R):
-            # u > 0
-            for n in range(N/2,N):
-                mp = arange(0,m)
+            #%% u > 0
+            for n in range(N/2, N):
+                mp = arange(m)
                 row_index = ravel_multi_index((m,n,r),shap)
                 col_indexes = ravel_multi_index((mp,n,r),shap)
                 vals = 1/u[n] * exp(-dtau/u[n]*(m-mp-0.5)) * dtau
                 Arow.extend(m*[row_index])
                 Acol.extend(col_indexes)
                 Aval.extend(vals)
-            # u < 0
-            for n in range(0,N/2):
-                mp = arange(m,M-1)
+            #%% u < 0
+            for n in range(N/2):
+                mp = arange(m, M-1)
                 row_index = ravel_multi_index((m,n,r),shap)
                 col_indexes = ravel_multi_index((mp,n,r),shap)
                 vals = -1/u[n] * exp(-dtau/u[n]*(m-mp-0.5)) * dtau
@@ -239,7 +236,7 @@ def white_light_scatter(dhf, tau0, P, h, om=1., M=20, N=20, R=20, N_int=30, R_in
         if verbose:
             clear_output(wait=True)
             time_mod.sleep(0.01)
-            print('Building A: {}/{}'.format(m+1,M))
+            print('Building A:', m+1, '/', M)
             sys.stdout.flush()
 
     A = sp.coo_matrix((Aval, [Arow, Acol]), shape=(M*N*R,(M-1)*N*R))
@@ -267,15 +264,14 @@ def white_light_scatter(dhf, tau0, P, h, om=1., M=20, N=20, R=20, N_int=30, R_in
         if verbose:
             clear_output(wait=True)
             time_mod.sleep(0.01)
-            print('Building B: %i/%i'%(m+1,M-1))
+            print('Building B:',m+1,'/',M-1)
             sys.stdout.flush()
 
     B = sp.coo_matrix((Bval, [Brow, Bcol]), shape=((M-1)*N*R,M*N*R))
     B = B.tocsr()
 
-    ####################################################################
-    # Compute single-scatter source function. This is the only step which
-    # needs the airglow distribution
+#%% Compute single-scatter source function.
+# This is the only step which needs the airglow distribution
 
     # Initial state (iteration 0 is the initialization)
     J = zeros((M-1,N,R,K+1)) # defined on tau grid midpoints
