@@ -19,24 +19,23 @@ def dhf(x:np.ndarray, y:np.ndarray):
 
     return f
 
+def P_rayleigh(u0,u1,phi0,phi1):
+    '''
+    Scattering phase function, defined so it integrates to 4*pi over the sphere.
+    '''
+    u = u0*u1 + np.sqrt((1-u0**2)*(1-u1**2)) * np.cos(phi0-phi1) # cos (scattering angle)
+    return 0.75 * (1 + u**2)
+
 
 if __name__ == '__main__':
     from argparse import ArgumentParser
     p = ArgumentParser()
     p = p.parse_args()
 
-    xv = np.arange(-500e3, 500e3,5e3)
-    yv = np.arange(-500e3, 500e3,5e3)
-
-    x,y = np.meshgrid(xv,yv)
-
-    I = dhf(x,y)
-
-    zenang = 30
-    az = 45
+    zenang = np.arange(60., 5.)
+    az = np.arange(360., 10.)
     h = 150e3
 
-    optdepth = 0.
-    P = 4 * np.pi
+    optdepth = 0.05 # per B. Harding for minimal aerosol
 
-    g_sc = scatter_along_los(I, optdepth, P, h, zenang, az)[0]
+    g_sc,g_dir,s_sc,s_dir = scatter_along_los(dhf, optdepth, P_rayleigh, h, zenang, az)

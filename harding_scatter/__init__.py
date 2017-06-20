@@ -5,9 +5,8 @@ import numpy as np
 from numpy import (sqrt, exp, arctan2, sin, cos, linspace, zeros, pi,
                    arange, ravel_multi_index, meshgrid, arccos, arcsin,
                     mod, array, concatenate)
-import sys
-import time as time_mod
-from IPython.display import clear_output
+#import sys, time
+#from IPython.display import clear_output
 from scipy import interpolate
 import scipy.sparse as sp
 from scipy.optimize import leastsq
@@ -234,10 +233,10 @@ def white_light_scatter(dhf, tau0, P, h, om=1., M=20, N=20, R=20, N_int=30, R_in
                 Aval.extend(vals)
 
         if verbose:
-            clear_output(wait=True)
-            time_mod.sleep(0.01)
+           # clear_output(wait=True)
+            #time.sleep(0.01)
             print('Building A:', m+1, '/', M)
-            sys.stdout.flush()
+   #         sys.stdout.flush()
 
     A = sp.coo_matrix((Aval, [Arow, Acol]), shape=(M*N*R,(M-1)*N*R))
     A = A.tocsr()
@@ -262,10 +261,10 @@ def white_light_scatter(dhf, tau0, P, h, om=1., M=20, N=20, R=20, N_int=30, R_in
                 Bval.extend(val.flatten())
 
         if verbose:
-            clear_output(wait=True)
-            time_mod.sleep(0.01)
+#            clear_output(wait=True)
+#            time.sleep(0.01)
             print('Building B:',m+1,'/',M-1)
-            sys.stdout.flush()
+#            sys.stdout.flush()
 
     B = sp.coo_matrix((Bval, [Brow, Bcol]), shape=((M-1)*N*R,M*N*R))
     B = B.tocsr()
@@ -303,10 +302,10 @@ def white_light_scatter(dhf, tau0, P, h, om=1., M=20, N=20, R=20, N_int=30, R_in
             J[:,n,r,0] = dJ.sum(axis=(1,2))
 
         if verbose:
-            clear_output(wait=True)
-            time_mod.sleep(0.01)
+#            clear_output(wait=True)
+#            time.sleep(0.01)
             print('Initial source function: %i/%i'%(n+1,N))
-            sys.stdout.flush()
+#            sys.stdout.flush()
 
     ######################################################################
     # Compute multiple scattering solution based on Hansen's method
@@ -323,16 +322,14 @@ def white_light_scatter(dhf, tau0, P, h, om=1., M=20, N=20, R=20, N_int=30, R_in
         J[:,:,:,k+1] = Jflat.reshape((M-1,N,R))
 
         if verbose:
-            clear_output(wait=True)
-            time_mod.sleep(0.01)
+#            clear_output(wait=True)
+#            time.sleep(0.01)
             print('Scattering iteration: %i/%i'%(k+1,K))
-            sys.stdout.flush()
+#            sys.stdout.flush()
 
         # See how much solution is changing
         change = norm(J[:,:,:,k+1])/norm(J[:,:,:,:k+1].sum(axis=3))
         if change < tol:
-            if verbose:
-                print('Halted')
             break
 
     Ifull = I.sum(axis=3) # All scattering orders
@@ -401,7 +398,7 @@ def scatter_along_los(dhf, tau0, P, h, th_look, phi_look, om=1., q=None, full_fo
     Ii_new = zeros((N,R+1))
     Ii_new[:,0] = (Ii[:,-1] + Ii[:,0])/2
     Ii_new[:,1:] = Ii
-    Iint = RectSphereBivariateSpline(thi[:N/2], phii_new, Ii_new[:N/2,:], pole_values=(zenith_val, None))
+    Iint = RectSphereBivariateSpline(thi[:N//2], phii_new, Ii_new[:N//2,:], pole_values=(zenith_val, None))
     def I_sc(u,phi):
         # Given a calculated, discretized, scattered intensity (Ifull), evaluate it
         # at the given u, phi. Use linear interpolation on a sphere.
@@ -557,10 +554,10 @@ def descatter_asi_data(imcut, yim, tau0, P, h,  om=1., M=10, N=20, R=10, N_int=2
     for n_iter in range(N_iters):
 
         if verbose:
-            clear_output(wait=True)
-            time_mod.sleep(0.01)
+#            clear_output(wait=True)
+#            time.sleep(0.01)
             print('%i/%i' % (n_iter+1, N_iters))
-            sys.stdout.flush()
+#            sys.stdout.flush()
 
         # Define 2D brightness distribution function from current guess (sky - scatt)
         imcut_iter = exp(tau0/cos(thim)) * (imcut_meas - cos(thim)*imcut_scatt)
@@ -659,10 +656,10 @@ def descatter_asi_data_2D(imd, asi_mask_d, Xd, Yd, tau0, P, h, om=1., M=10, N=20
     for n_iter in range(N_iters):
 
         if verbose:
-            clear_output(wait=True)
-            time_mod.sleep(0.01)
-            print('%i/%i' % (n_iter+1, N_iters))
-            sys.stdout.flush()
+#            clear_output(wait=True)
+#            time.sleep(0.01)
+            print(n_iter+1, '/', N_iters)
+#            sys.stdout.flush()
 
         # Define 2D brightness distribution function from current guess (sky - scatt)
         imd_iter = exp(tau0/cos(thid)) * (imd_meas - cos(thid)*imd_scatt)
@@ -777,10 +774,10 @@ def scattered_and_direct_spectra(dhf, tau0, P, h, th_look, phi_look, uvw, T, om=
         spectrum_direct_stray[:,l] = s_dir
 
         if verbose:
-            clear_output(wait=True)
-            time_mod.sleep(0.01)
-            print('{}/{}'.format(l+1,L))
-            sys.stdout.flush()
+#            clear_output(wait=True)
+#            time.sleep(0.01)
+            print(l+1,'/',L)
+#            sys.stdout.flush()
 
     return v, spectrum_scatt, spectrum_direct, spectrum_scatt_stray, spectrum_direct_stray
 
